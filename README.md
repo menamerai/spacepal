@@ -1,2 +1,4 @@
 # star
 Solution For NASA SpaceApp 2023
+
+STAR (Standards Technical Assistance Resource) is a cutting-edge app designed to revolutionize the way NASA scientists handle requirements documentation. By leveraging advanced algorithms and AI capabilities, STAR streamlines the process of processing requirements, offering insightful suggestions for improvements. This powerful tool not only enhances efficiency but also ensures that NASA's rigorous standards are met with precision. STAR is set to be the guiding star for aerospace documentation, making the complex task of requirement analysis a seamless and intelligent experience for scientists and engineers alike.
