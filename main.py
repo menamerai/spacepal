@@ -15,7 +15,7 @@ from langchain.llms.cohere import Cohere
 from langchain.chains import RetrievalQA
 from langchain.callbacks import get_openai_callback
 
-from typing import Optional, List, Any
+from typing import Optional, List, Dict, Any
 
 import pickle
 import os
@@ -25,14 +25,13 @@ model_name = "teknium/Phi-Hermes-1.3B"
 # model_name = "teknium/Puffin-Phi-v2"
 device = 0 if torch.cuda.is_available() else -1
 
-# spec_toc_pattern = "[0-9]+\.[0-9\.]*\s?[a-z A-Z0-9\-\,\(\)\n\?]+\s?\.+\s?[0-9]+"
-# spec_toc_pattern = "[0-9]+\.[0-9\.]*\s?[a-z A-Z0-9\-\,\(\)\n\?]+\s?[\.\s]+\s?[0-9]+"
 spec_toc_pattern = "[0-9]+\.[0-9\.]*\s?[a-z A-Z0-9\-\,\(\)\n\?]+\s?[\.\s][\.\s]+\s?[0-9]+"
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model-name", type=str, default="teknium/Phi-Hermes-1.3B")
     parser.add_argument("-k", "--key", type=str)
+    parser.add_argument("-p", "--pdf", type=str)
     args = parser.parse_args()
     if args.model_name == "cohere" and args.key is None:
         raise ValueError("must provide API key if using cohere backend")
@@ -65,16 +64,46 @@ def get_toc_pages(pages: List) -> List[Any]:
         matches = [x for x in re.findall(spec_toc_pattern, text)]
         pg_number_pattern = "[0-9]+$"
         pg_number_strs = [re.findall(pg_number_pattern, match.strip()) for match in matches]
-        pg_numbers = [int(num[0]) for num in pg_number_strs if len(num) > 0] + [0]
+        pg_numbers = [int(num[0]) for num in pg_number_strs if len(num) > 0] + [-1]
         if max(pg_numbers) < max_pg_number:
             return toc_pages[:i] 
         else:
             max_pg_number = max(pg_numbers)
-
     return toc_pages
 
-def get_toc_entries(pages: List) -> List[str]:
-    pass
+def get_page_offset(pages: List) -> int:
+    second_page_content = pages[1].extract_text()
+    second_page_lines = [line.strip() for line in second_page_content.split("\n") if line.strip() != ""]
+
+    print(second_page_lines[-1])
+    page_numbers = re.findall(".*\s*[0-9]+", second_page_lines[-1])
+    print(page_numbers)
+    pg_num = int(page_numbers[0])
+    if pg_num == 1:
+        return 0
+    elif pg_num == 2:
+        return -1
+    else:
+        raise ValueError(f"unrecognized page number string: {page_numbers[0]}")
+
+def get_toc_entries(pages: List) -> Dict[str, Dict]:
+    split_pattern = "\.\.+" # match 2 or more dots
+    entries = {}
+    for page in pages:
+        text = page.extract_text()
+        matches = [x for x in re.findall(spec_toc_pattern, text)]
+        for match in matches:
+            match_components = re.split(split_pattern, match)
+            match_components[0] = match_components[0].replace("\n", "").strip()
+            tokens = match_components[0].split() 
+            spec_num, spec_title = tokens[0], ' '.join(tokens[1:])
+            pg_num = int(match_components[-1])
+            entries[match_components[0]] = {
+                "page_number": pg_num,
+                "spec_number": spec_num,
+                "spec_title": spec_title
+            }
+    return entries
 
 def load_pdf_to_text(pdf_path: str): 
     pdf_reader = PdfReader(pdf_path)
@@ -86,8 +115,7 @@ def load_pdf_to_text(pdf_path: str):
     return text
 
 @st.cache_resource
-def init_chain(model_name: str, key: Optional[str] = None) -> RetrievalQA:
-    pdf_path = "test.pdf"
+def init_chain(pdf_path: str, model_name: str, key: Optional[str] = None) -> RetrievalQA:
     text = load_pdf_to_text(pdf_path)
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size = 200,
@@ -101,9 +129,7 @@ def init_chain(model_name: str, key: Optional[str] = None) -> RetrievalQA:
     if os.path.exists(f"{store_name}.pkl"):
         with open(f"{store_name}.pkl","rb") as f:
             vectorstore = pickle.load(f)
-        #st.write("Already, Embeddings loaded from the your folder (disks)")
     else:
-        #embedding (Openai methods) 
         embeddings = HuggingFaceEmbeddings(model_name="all-mpnet-base-v2")
 
         #Store the chunks part in db (vector)
@@ -115,8 +141,8 @@ def init_chain(model_name: str, key: Optional[str] = None) -> RetrievalQA:
     retriever = vectorstore.as_retriever()
     
     if model_name == "cohere":
+        prompt_template = "You are a superintelligent AI assistant that excels in handling technical documents. Use the following context to answer the question. Base your answers on the context given, do not make up information. If you don't know something that's fine, just say it. Take a deep breath and do your best.\nContext:\n{context}\nQuestion: {question}\nAnswer:"
         llm = Cohere(cohere_api_key=key)
-        prompt_template = "You are a superintelligent AI assistant that excels in handling technical documents. Use the following context to answer the question. Base your answers on the context given, do not make up information. If you don't know something, just say it.\nContext:\n{context}\nQuestion: {question}\nAnswer: "
     else:
         prompt_template = "### Instruction: Use the following context to answer the question. Base your answers on the context given, do not make up information.\nContext:\n{context}\nQuestion: {question}\n### Response: \n"
         llm = HuggingFacePipeline.from_model_id(
@@ -147,7 +173,7 @@ def main(chain: RetrievalQA):
 
 if __name__ == "__main__":
     args = parse_args()
-    chain = init_chain(args.model_name, args.key)
+    chain = init_chain(args.pdf, args.model_name, args.key)
     main(chain) 
 
 
