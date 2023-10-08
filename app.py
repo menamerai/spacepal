@@ -4,12 +4,13 @@ import tempfile
 import shutil
 import os
 from pathlib import Path
-from main import load_pdf_to_text, generate_response, init_chain, binary_to_pdf
+from main import generate_response, init_chain, binary_to_pdf
 from dotenv import load_dotenv
 
 """
-# Space PAL
+# SPACEPAL
 """
+
 load_dotenv()
 model_name = "cohere"
 key = os.environ.get("COHERE_API_KEY")
@@ -22,8 +23,10 @@ if 'pdf' not in st.session_state:
     st.session_state['pdf'] = None
 if 'submitted' not in st.session_state: 
     st.session_state['submitted'] = False
-
-
+if "model" not in st.session_state: 
+    st.session_state['model'] = None
+if "toc_entries" not in st.session_state: 
+    st.session_state['toc_entries'] = None
 
 if not st.session_state["temp_dir"]:
     temp_dir = tempfile.TemporaryDirectory(prefix="temp")
@@ -47,8 +50,7 @@ try:
                 pdf_name = st.session_state['pdf'].name
                 pdf_path = Path(temp_path) / pdf_name
                 binary_to_pdf(st.session_state['pdf'].read(), str(temp_path), pdf_name) 
-                text = load_pdf_to_text(pdf_path) # CHAIN HERE
-                chain = init_chain(model_name, key)
+                st.session_state.model, st.session_state.toc_entries = init_chain(model_name, str(pdf_path), key=key, chunk_size=2000)
 
 
     if st.session_state['pdf'] is not None:
@@ -56,7 +58,9 @@ try:
             # Display user message in chat message container
             st.chat_message("user").markdown(prompt)
             st.session_state.messages.append({"role": "user", "content": prompt})
-            response = f"{generate_response(prompt, chain)}"
+            with st.spinner("Generating Response..."):
+                response = f"{generate_response(prompt, st.session_state.model, st.session_state.toc_entries)}"
+            st.success("Done!")
 
             # Display assistant response in chat message container
             with st.chat_message("ai", avatar='🤖'):
@@ -64,8 +68,8 @@ try:
 
             # Add assistant response to chat history
             st.session_state.messages.append({"role": "assistant", "content": response})          
-finally: 
-    st.stop()
+
+except KeyboardInterrupt: 
     if st.session_state['temp_dir']:
         if os.path.exists("tmp"):
             shutil.rmtree("tmp")
