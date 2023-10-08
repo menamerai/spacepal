@@ -49,7 +49,7 @@ def get_toc_pages(pages: List) -> List[Any]:
     state = 0 # 0 means we are looking for TOC start, 1 means we're parsing regex
     i = 0
     toc_pages = []
-    while True:
+    while i < len(pages):
         page = pages[i]
         text = page.extract_text()
         match state:
