@@ -164,16 +164,18 @@ def get_spec_list(pdf_path: str, verbose: bool = False) -> Tuple[List[str], Dict
 
     entries.update(tmp)
     lens = [len(s) for s in specs]
-    page_one_content = pdf_reader.pages[0].extract_text()
-    text_splitter = RecursiveCharacterTextSplitter(
-        # Set a really small chunk size, just to show.
-        chunk_size=int(np.mean(lens)),
-        chunk_overlap=20,
-        length_function=len,
-        is_separator_regex=False,
-    )
+    page_one_chunks = []
+    if len(lens) != 0:
+        page_one_content = pdf_reader.pages[0].extract_text()
+        text_splitter = RecursiveCharacterTextSplitter(
+            # Set a really small chunk size, just to show.
+            chunk_size=int(np.mean(lens)),
+            chunk_overlap=20,
+            length_function=len,
+            is_separator_regex=False,
+        )
 
-    page_one_chunks = text_splitter.split_text(page_one_content)
+        page_one_chunks = text_splitter.split_text(page_one_content)
     return page_one_chunks + specs, entries
 
 def get_toc_entries(pages: List) -> Dict[str, Dict]:
