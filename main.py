@@ -106,6 +106,33 @@ def get_spec_entry(pages: List, title: str, entries: Dict[str, Dict]) -> Tuple[i
             return spec_content
     return None
 
+def get_subspec_entries(title: str, entries: Dict[str, Dict]) -> Dict[str, Dict]:
+    spec = entries[title]['spec']
+    if spec is None:
+        return {}
+    page_num = entries[title]['page_number']
+    spec_num = entries[title]['spec_number']
+    level = spec_num.count(".")
+
+    subspec_idxs = []
+    lines = spec.split("\n")
+    for i, line in enumerate(lines[1:]):
+        if spec_num in line:
+            subspec_idxs += [i + 1]
+
+    subspec_entries = {}
+    for idx in subspec_idxs:
+        subspec_tokens = lines[idx].split()
+        subspec_num, subspec_title = subspec_tokens[0], ' '.join(subspec_tokens[1:])
+        if subspec_num.count(".") > level + 1:
+            continue
+        subspec_entries[lines[idx]] = {
+            "page_number": page_num,
+            "spec_number": subspec_num,
+            "spec_title": subspec_title
+        }
+    return subspec_entries
+
 def get_spec_list(pdf_path: str, verbose: bool = False) -> Tuple[List[str], Dict[str, Dict]]:
     pdf_reader = PdfReader(pdf_path)
     entries = get_toc_entries(pdf_reader.pages)
@@ -115,8 +142,28 @@ def get_spec_list(pdf_path: str, verbose: bool = False) -> Tuple[List[str], Dict
     if verbose:
         entry_iter = tqdm(entry_iter, total=len(entries))
     for title in entry_iter:
-        specs += [get_spec_entry(pdf_reader.pages, title, entries)]
-    return [s for s in specs if s is not None], entries
+        spec_entry = get_spec_entry(pdf_reader.pages, title, entries)
+        if spec_entry is None:
+            entries[title]['spec'] = ""
+        else:
+            specs += [spec_entry]
+            entries[title]['spec'] = spec_entry
+
+    tmp = {}
+    for k in entries.keys():
+        tmp.update(get_subspec_entries(k, entries))
+
+    copy = entries.copy()
+    copy.update(tmp)
+    for k in tmp.keys():
+        spec_entry = get_spec_entry(pdf_reader.pages, k, copy)
+        if spec_entry is None:
+            tmp[k]['spec'] = ""
+        else:
+            tmp[k]['spec'] = spec_entry
+
+    entries.update(tmp)
+    return specs, entries
 
 def get_toc_entries(pages: List) -> Dict[str, Dict]:
     pages = get_toc_pages(pages)
@@ -161,16 +208,7 @@ def binary_to_pdf(bin, dir: str, name: str):
         pdf_out.write(bin)
 
 @st.cache_resource
-def init_chain(model_name: str, pdf_path: str, chunk_size: int = 1000, key: Optional[str] = None) -> Tuple[Model, Dict[str, Dict]]:
-    # pdf_path = "test1.pdf"
-    # text = load_pdf_to_text(pdf_path)
-    # text_splitter = RecursiveCharacterTextSplitter(
-    #     chunk_size = 200,
-    #     chunk_overlap = 40,
-    #     length_function = len
-    # )
-    # chunks = text_splitter.split_text(text=text)
-
+def init_chain(model_name: str, pdf_path: str, key: Optional[str] = None) -> Tuple[Model, Dict[str, Dict]]:
     chunks, toc_entries = load_pdf_to_chunks(pdf_path, verbose=True)
     store_name = pdf_path[:-4]
         
@@ -192,7 +230,7 @@ def init_chain(model_name: str, pdf_path: str, chunk_size: int = 1000, key: Opti
     
     if model_name == "cohere":
         llm = Cohere(cohere_api_key=key)
-        prompt_template = "You are a superintelligent AI assistant that excels in handling technical documents. Use the following context to answer the question. Base your answers on the context given, do not make up information. If you don't know something, just say it.\nContext:\n{context}\nQuestion: {question}\nAnswer: "
+        prompt_template = "You are a superintelligent AI assistant that excels in handling technical documents. Use the following context to answer the question. Base your answers on the context given, do not make up information. If you don't know something, just say it.\nContext:\n{context}{question}\nAnswer: "
     else:
         prompt_template = "### Instruction: You are an AI assistant NASA missions used specifically to proof-read their documentations. Use the following context to answer the question. Base your answers on the context given, do not make up information.\nContext:\n{context}\nQuestion: {question}\n### Response: \n"
         llm = HuggingFacePipeline.from_model_id(
@@ -214,27 +252,27 @@ def init_chain(model_name: str, pdf_path: str, chunk_size: int = 1000, key: Opti
     return {"chain": chain, "classifier": classifier}, toc_entries
 
 def generate_response(question: str, model: Model, toc_entries: Dict[str, Dict] = {}):
+    context = ""
+    # if we're using ToC to augment, hack extra sources into RAG through the question string
     if len(toc_entries) > 0:
         toc_labels = list(toc_entries.keys())
         results = model['classifier'](question, toc_labels)
-        idxs = np.argsort(results['scores'])[::-1][:10]
-        for i in idxs:
-            print(results['labels'][i] + " -- " + str(results['scores'][i]))
+        score_idxs = np.argsort(results['scores'])[::-1][:10]
 
+        levels = [toc_entries[results['labels'][i]]['spec_number'].count('.') for i in score_idxs]
+        level_idxs = np.argsort(levels)[::-1][:5]
+
+        for i in level_idxs:
+            label = results['labels'][score_idxs[i]]
+            context += (toc_entries[label]['spec'] + "\n")
+
+    question = f"{context}\nQuestion: {question}"
     response = model['chain'].run(question)
     return response
 
-def main(chain: RetrievalQA): 
-    question = input("Input Question: ")
-    response = chain.run(question)
-
-    print(response)
-
 if __name__ == "__main__":
     args = parse_args()
-    model, toc_entries = init_chain(args.model_name, args.path, key=args.key, chunk_size=2000)
+    model, toc_entries = init_chain(args.model_name, args.path, key=args.key)
     question = input("Input Question: ")
     response = generate_response(question, model, toc_entries)
     print(response)
-    # main(chain) 
-    
