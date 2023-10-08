@@ -3,6 +3,8 @@ import streamlit as st
 import tempfile
 import shutil
 import os
+import time
+import signal
 from pathlib import Path
 from main import generate_response, init_chain, binary_to_pdf
 from dotenv import load_dotenv
@@ -43,7 +45,9 @@ try:
             st.write('Please submit a pdf!')
             uploaded_pdfs = st.file_uploader('Upload a PDF', type=['pdf'])
             submit_button = st.button('Submit', type='primary')
+
             if submit_button:
+                time.sleep(1)
                 st.session_state['submitted'] = True
                 st.session_state['pdf'] = uploaded_pdfs
                 temp_path = "." + str(Path(st.session_state["temp_dir"].name))
@@ -60,7 +64,6 @@ try:
             st.session_state.messages.append({"role": "user", "content": prompt})
             with st.spinner("Generating Response..."):
                 response = f"{generate_response(prompt, st.session_state.model, st.session_state.toc_entries)}"
-            st.success("Done!")
 
             # Display assistant response in chat message container
             with st.chat_message("ai", avatar='🤖'):
@@ -69,8 +72,7 @@ try:
             # Add assistant response to chat history
             st.session_state.messages.append({"role": "assistant", "content": response})          
 
-except KeyboardInterrupt: 
-    if st.session_state['temp_dir']:
-        if os.path.exists("tmp"):
-            shutil.rmtree("tmp")
-
+finally: 
+    if st.session_state['pdf']:
+        if os.path.exists("./tmp"):
+            shutil.rmtree("./tmp")
