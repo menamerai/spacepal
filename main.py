@@ -85,6 +85,7 @@ def load_pdf_to_text(pdf_path: str):
 
     return text
 
+@st.cache_resource
 def init_chain(model_name: str, key: Optional[str] = None) -> RetrievalQA:
     pdf_path = "test.pdf"
     text = load_pdf_to_text(pdf_path)
