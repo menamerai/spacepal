@@ -32,6 +32,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model-name", type=str, default="teknium/Phi-Hermes-1.3B")
     parser.add_argument("-k", "--key", type=str)
+    parser.add_argument("-p", "--path", type=str, required=True)
     args = parser.parse_args()
     if args.model_name == "cohere" and args.key is None:
         raise ValueError("must provide API key if using cohere backend")
@@ -132,31 +133,35 @@ def get_toc_entries(pages: List) -> Dict[str, Dict]:
             }
     return entries
 
-def load_pdf_to_text(pdf_path: str): 
-    pdf_reader = PdfReader(pdf_path)
-    text = ""
-
-    for page in pdf_reader.pages:
-        text += page.extract_text()
-
-    return text
+def load_pdf_to_chunks(pdf_path: str, chunk_size: int, verbose: bool = False) -> List[str]:
+    specs = get_spec_list(pdf_path) 
+    lens = [len(s) for s in specs]
+    idx = [i for i, l in enumerate(lens) if l > chunk_size]
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=0,
+        length_function=len
+    )
+    for i in idx:
+        specs += text_splitter.split_text(specs[i])
+    return specs
 
 def binary_to_pdf(bin, dir: str):
     with open(os.path.expanduser(dir), "wb") as pdf_out:
         pdf_out.write(base64.b64decode(bin))
 
-
 @st.cache_resource
-def init_chain(model_name: str, key: Optional[str] = None) -> RetrievalQA:
-    pdf_path = "test1.pdf"
-    text = load_pdf_to_text(pdf_path)
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size = 200,
-        chunk_overlap = 40,
-        length_function = len
-    )
-    chunks = text_splitter.split_text(text=text)
+def init_chain(model_name: str, pdf_path: str, chunk_size: int = 1000, key: Optional[str] = None) -> RetrievalQA:
+    # pdf_path = "test1.pdf"
+    # text = load_pdf_to_text(pdf_path)
+    # text_splitter = RecursiveCharacterTextSplitter(
+    #     chunk_size = 200,
+    #     chunk_overlap = 40,
+    #     length_function = len
+    # )
+    # chunks = text_splitter.split_text(text=text)
 
+    chunks = load_pdf_to_chunks(pdf_path, chunk_size=chunk_size, verbose=True)
     store_name = pdf_path[:-4]
         
     if os.path.exists(f"{store_name}.pkl"):
@@ -208,8 +213,6 @@ def main(chain: RetrievalQA):
 
 if __name__ == "__main__":
     args = parse_args()
-    chain = init_chain(args.model_name, args.key)
+    chain = init_chain(args.model_name, args.path, key=args.key)
     main(chain) 
-
-
     
