@@ -1,3 +1,4 @@
+import re
 import torch
 import argparse
 
@@ -14,7 +15,7 @@ from langchain.llms.cohere import Cohere
 from langchain.chains import RetrievalQA
 from langchain.callbacks import get_openai_callback
 
-from typing import Optional
+from typing import Optional, List, Any
 
 import pickle
 import os
@@ -23,6 +24,8 @@ import base64
 model_name = "teknium/Phi-Hermes-1.3B"
 # model_name = "teknium/Puffin-Phi-v2"
 device = 0 if torch.cuda.is_available() else -1
+
+spec_toc_pattern = "[0-9]+\.[0-9\.]*\s?[a-z A-Z0-9\-\,\(\)\n\?]+\s?\.+\s?[0-9]+"
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -33,12 +36,41 @@ def parse_args():
         raise ValueError("must provide API key if using cohere backend")
     return args
 
+def get_toc_pages(pages: List) -> List[Any]:
+    state = 0 # 0 means we are looking for TOC start, 1 means we're parsing regex
+    i = 0
+    toc_pages = []
+    while True:
+        page = pages[i]
+        text = page.extract_text()
+        match state:
+            case 0:
+                if "table of contents" in text.lower():
+                    state = 1
+                else:
+                    i += 1
+            case 1:
+                matches = re.findall(spec_toc_pattern, text)
+                if len(matches) > 0:
+                    toc_pages += [page]
+                else:
+                    break
+                i += 1
+    return toc_pages
+
+def get_toc_entries(pages: List) -> List[str]:
+    pass
+
 def load_pdf_to_text(pdf_path: str): 
     pdf_reader = PdfReader(pdf_path)
     text = ""
 
+    print("PARSING PDF")
     for page in pdf_reader.pages:
         text += page.extract_text()
+        print(page.extract_text())
+        print(page.extract_text().split("\n"))
+        input()
 
     return text
 
@@ -67,7 +99,7 @@ def rag_process(pdf_path: str, text: str, model_name: str, question: str):
             pickle.dump(vectorstore,f)
 
     retriever = vectorstore.as_retriever()
-    prompt_template = "### Instruction: Use the following context to answer the question. Base your answers on the context given, do not make up information.\nContext:\n{context}\nQuestion: {question}\n### Response: \n"
+    prompt_template = "### Instruction: Use the following context to answer the question. Base your answers on the context given, do not make up information. If no question is given, wait for a question to be asked.\nContext:\n{context}\nQuestion: {question}\n### Response: \n"
     template = PromptTemplate(
         template=prompt_template,
         input_variables=["context", "question"],
