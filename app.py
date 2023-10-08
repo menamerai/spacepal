@@ -9,14 +9,13 @@ from pathlib import Path
 from main import generate_response, init_chain, binary_to_pdf
 from dotenv import load_dotenv
 
-"""
-# SPACEPAL
-"""
+st.header('SPACE PAL :rocket:', divider='rainbow')
 
 load_dotenv()
 model_name = "cohere"
 key = os.environ.get("COHERE_API_KEY")
 
+# Initialize session state
 if 'temp_dir' not in st.session_state:
     st.session_state["temp_dir"] = False
 if "messages" not in st.session_state:
@@ -54,7 +53,7 @@ try:
                 pdf_name = st.session_state['pdf'].name
                 pdf_path = Path(temp_path) / pdf_name
                 binary_to_pdf(st.session_state['pdf'].read(), str(temp_path), pdf_name) 
-                st.session_state.model, st.session_state.toc_entries = init_chain(model_name, str(pdf_path), key=key, chunk_size=2000)
+                st.session_state.model, st.session_state.toc_entries = init_chain(model_name, str(pdf_path), key=key)
 
 
     if st.session_state['pdf'] is not None:
