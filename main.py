@@ -7,7 +7,7 @@ import streamlit as st
 
 from streamlit_extras.add_vertical_space import add_vertical_space
 from pypdf import PdfReader
-
+from pathlib import Path
 from tqdm import tqdm
 
 from langchain.prompts import PromptTemplate
@@ -154,9 +154,11 @@ def load_pdf_to_chunks(pdf_path: str, chunk_size: Optional[int] = None, verbose:
             specs += text_splitter.split_text(specs[i])
     return specs, toc_entries
 
-def binary_to_pdf(bin, dir: str):
-    with open(os.path.expanduser(dir), "wb") as pdf_out:
-        pdf_out.write(base64.b64decode(bin))
+def binary_to_pdf(bin, dir: str, name: str):
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+    with open(Path(dir) / name, "wb") as pdf_out:
+        pdf_out.write(bin)
 
 @st.cache_resource
 def init_chain(model_name: str, pdf_path: str, chunk_size: int = 1000, key: Optional[str] = None) -> Tuple[Model, Dict[str, Dict]]:
