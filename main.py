@@ -6,6 +6,8 @@ import streamlit as st
 from streamlit_extras.add_vertical_space import add_vertical_space
 from pypdf import PdfReader
 
+from tqdm import tqdm
+
 from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -96,28 +98,39 @@ def get_spec_entry(pages: List, title: str, entries: Dict[str, Dict]) -> Tuple[i
             return spec_content
     return None
 
-def get_toc_entries(pages: List) -> Tuple[Dict[str, Dict], Dict]:
+def get_spec_list(pdf_path: str, verbose: bool = False) -> List[str]:
+    pdf_reader = PdfReader(pdf_path)
+    entries = get_toc_entries(pdf_reader.pages)
+
+    specs = []
+    entry_iter = entries.keys()
+    if verbose:
+        entry_iter = tqdm(entry_iter, total=len(entries))
+    for title in entry_iter:
+        specs += [get_spec_entry(pdf_reader.pages, title, entries)]
+    return [s for s in specs if s is not None]
+
+def get_toc_entries(pages: List) -> Dict[str, Dict]:
     pages = get_toc_pages(pages)
     split_pattern = "\.\.+" # match 2 or more dots
     entries = {}
-    first_entry = None
     for page in pages:
         text = page.extract_text()
         matches = [x for x in re.findall(spec_toc_pattern, text)]
         for match in matches:
             match_components = re.split(split_pattern, match)
             match_components[0] = match_components[0].replace("\n", "").strip()
-            if first_entry is None:
-                first_entry = match_components[0]
+            match_components[-1] = match_components[-1].split()[0].replace(".", "").strip()
             tokens = match_components[0].split() 
             spec_num, spec_title = tokens[0], ' '.join(tokens[1:])
+
             pg_num = int(match_components[-1])
             entries[match_components[0]] = {
                 "page_number": pg_num,
                 "spec_number": spec_num,
                 "spec_title": spec_title
             }
-    return entries, entries[first_entry]
+    return entries
 
 def load_pdf_to_text(pdf_path: str): 
     pdf_reader = PdfReader(pdf_path)
