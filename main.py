@@ -163,7 +163,18 @@ def get_spec_list(pdf_path: str, verbose: bool = False) -> Tuple[List[str], Dict
             tmp[k]['spec'] = spec_entry
 
     entries.update(tmp)
-    return specs, entries
+    lens = [len(s) for s in specs]
+    page_one_content = pdf_reader.pages[0].extract_text()
+    text_splitter = RecursiveCharacterTextSplitter(
+        # Set a really small chunk size, just to show.
+        chunk_size=int(np.mean(lens)),
+        chunk_overlap=20,
+        length_function=len,
+        is_separator_regex=False,
+    )
+
+    page_one_chunks = text_splitter.split_text(page_one_content)
+    return page_one_chunks + specs, entries
 
 def get_toc_entries(pages: List) -> Dict[str, Dict]:
     pages = get_toc_pages(pages)
@@ -229,7 +240,7 @@ def init_chain(model_name: str, pdf_path: str, key: Optional[str] = None) -> Tup
     
     if model_name == "cohere":
         llm = Cohere(cohere_api_key=key)
-        prompt_template = "You are a superintelligent AI assistant that excels in handling technical documents. Use the following context to answer the question, and cite specification numbers for context used. Base your answers on the context given, do not make up information. If you don't know something, just say it.\nContext:\n{context}{question}\nAnswer: "
+        prompt_template = "You are a superintelligent AI assistant that excels in handling technical documents. Use the following context to answer the question, and cite specification numbers for context used. Do not make up information, use the document for all of your thinking. If you don't know something, just say it.\nContext:\n{context}{question}\nAnswer: "
     else:
         prompt_template = "### Instruction: You are an AI assistant NASA missions used specifically to proof-read their documentations. Use the following context to answer the question. Base your answers on the context given, do not make up information.\nContext:\n{context}\nQuestion: {question}\n### Response: \n"
         llm = HuggingFacePipeline.from_model_id(
