@@ -2,7 +2,9 @@ import re
 import torch
 import argparse
 
+import numpy as np
 import streamlit as st
+
 from streamlit_extras.add_vertical_space import add_vertical_space
 from pypdf import PdfReader
 
@@ -16,13 +18,18 @@ from langchain.llms import HuggingFacePipeline
 from langchain.llms.cohere import Cohere
 from langchain.chains import RetrievalQA
 
-from typing import Optional, List, Dict, Tuple, Any
+from transformers import pipeline
+
+from typing import Optional, List, Dict, Tuple, Any, Union
 
 import pickle
 import os
 import base64
 
+Model = Dict[str, Union[Any,  RetrievalQA]]
+
 model_name = "teknium/Phi-Hermes-1.3B"
+nli_model = "sileod/deberta-v3-base-tasksource-nli"
 # model_name = "teknium/Puffin-Phi-v2"
 device = 0 if torch.cuda.is_available() else -1
 
@@ -99,7 +106,7 @@ def get_spec_entry(pages: List, title: str, entries: Dict[str, Dict]) -> Tuple[i
             return spec_content
     return None
 
-def get_spec_list(pdf_path: str, verbose: bool = False) -> List[str]:
+def get_spec_list(pdf_path: str, verbose: bool = False) -> Tuple[List[str], Dict[str, Dict]]:
     pdf_reader = PdfReader(pdf_path)
     entries = get_toc_entries(pdf_reader.pages)
 
@@ -109,7 +116,7 @@ def get_spec_list(pdf_path: str, verbose: bool = False) -> List[str]:
         entry_iter = tqdm(entry_iter, total=len(entries))
     for title in entry_iter:
         specs += [get_spec_entry(pdf_reader.pages, title, entries)]
-    return [s for s in specs if s is not None]
+    return [s for s in specs if s is not None], entries
 
 def get_toc_entries(pages: List) -> Dict[str, Dict]:
     pages = get_toc_pages(pages)
@@ -133,25 +140,26 @@ def get_toc_entries(pages: List) -> Dict[str, Dict]:
             }
     return entries
 
-def load_pdf_to_chunks(pdf_path: str, chunk_size: int, verbose: bool = False) -> List[str]:
-    specs = get_spec_list(pdf_path) 
-    lens = [len(s) for s in specs]
-    idx = [i for i, l in enumerate(lens) if l > chunk_size]
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=0,
-        length_function=len
-    )
-    for i in idx:
-        specs += text_splitter.split_text(specs[i])
-    return specs
+def load_pdf_to_chunks(pdf_path: str, chunk_size: Optional[int] = None, verbose: bool = False) -> List[str]:
+    specs, toc_entries = get_spec_list(pdf_path, verbose=verbose) 
+    if chunk_size is not None:
+        lens = [len(s) for s in specs]
+        idx = [i for i, l in enumerate(lens) if l > chunk_size]
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=40,
+            length_function=len
+        )
+        for i in idx:
+            specs += text_splitter.split_text(specs[i])
+    return specs, toc_entries
 
 def binary_to_pdf(bin, dir: str):
     with open(os.path.expanduser(dir), "wb") as pdf_out:
         pdf_out.write(base64.b64decode(bin))
 
 @st.cache_resource
-def init_chain(model_name: str, pdf_path: str, chunk_size: int = 1000, key: Optional[str] = None) -> RetrievalQA:
+def init_chain(model_name: str, pdf_path: str, chunk_size: int = 1000, key: Optional[str] = None) -> Tuple[Model, Dict[str, Dict]]:
     # pdf_path = "test1.pdf"
     # text = load_pdf_to_text(pdf_path)
     # text_splitter = RecursiveCharacterTextSplitter(
@@ -161,7 +169,7 @@ def init_chain(model_name: str, pdf_path: str, chunk_size: int = 1000, key: Opti
     # )
     # chunks = text_splitter.split_text(text=text)
 
-    chunks = load_pdf_to_chunks(pdf_path, chunk_size=chunk_size, verbose=True)
+    chunks, toc_entries = load_pdf_to_chunks(pdf_path, verbose=True)
     store_name = pdf_path[:-4]
         
     if os.path.exists(f"{store_name}.pkl"):
@@ -199,10 +207,19 @@ def init_chain(model_name: str, pdf_path: str, chunk_size: int = 1000, key: Opti
     )
     chain_type_kwargs = {"prompt": template}
     chain = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever, chain_type_kwargs=chain_type_kwargs)
-    return chain
 
-def generate_response(question: str, chain: RetrievalQA):
-    response = chain.run(question)
+    classifier = pipeline("zero-shot-classification", model=nli_model, device=device)
+    return {"chain": chain, "classifier": classifier}, toc_entries
+
+def generate_response(question: str, model: Model, toc_entries: Dict[str, Dict] = {}):
+    if len(toc_entries) > 0:
+        toc_labels = list(toc_entries.keys())
+        results = model['classifier'](question, toc_labels)
+        idxs = np.argsort(results['scores'])[::-1][:10]
+        for i in idxs:
+            print(results['labels'][i] + " -- " + str(results['scores'][i]))
+
+    response = model['chain'].run(question)
     return response
 
 def main(chain: RetrievalQA): 
@@ -213,6 +230,9 @@ def main(chain: RetrievalQA):
 
 if __name__ == "__main__":
     args = parse_args()
-    chain = init_chain(args.model_name, args.path, key=args.key)
-    main(chain) 
+    model, toc_entries = init_chain(args.model_name, args.path, key=args.key, chunk_size=2000)
+    question = input("Input Question: ")
+    response = generate_response(question, model, toc_entries)
+    print(response)
+    # main(chain) 
     
