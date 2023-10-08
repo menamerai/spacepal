@@ -5,7 +5,7 @@ import argparse
 import streamlit as st
 from streamlit_extras.add_vertical_space import add_vertical_space
 from pypdf import PdfReader
-
+from pathlib import Path
 from tqdm import tqdm
 
 from langchain.prompts import PromptTemplate
@@ -101,42 +101,23 @@ def get_spec_entry(pages: List, title: str, entries: Dict[str, Dict]) -> Tuple[i
 
 def get_spec_list(pdf_path: str, verbose: bool = False) -> List[str]:
     pdf_reader = PdfReader(pdf_path)
-    entries = get_toc_entries(pdf_reader.pages)
+    text = ""
 
-    specs = []
-    entry_iter = entries.keys()
-    if verbose:
-        entry_iter = tqdm(entry_iter, total=len(entries))
-    for title in entry_iter:
-        specs += [get_spec_entry(pdf_reader.pages, title, entries)]
-    return [s for s in specs if s is not None]
+    for page in pdf_reader.pages:
+        text += page.extract_text()
 
-def get_toc_entries(pages: List) -> Dict[str, Dict]:
-    pages = get_toc_pages(pages)
-    split_pattern = "\.\.+" # match 2 or more dots
-    entries = {}
-    for page in pages:
-        text = page.extract_text()
-        matches = [x for x in re.findall(spec_toc_pattern, text)]
-        for match in matches:
-            match_components = re.split(split_pattern, match)
-            match_components[0] = match_components[0].replace("\n", "").strip()
-            match_components[-1] = match_components[-1].split()[0].replace(".", "").strip()
-            tokens = match_components[0].split() 
-            spec_num, spec_title = tokens[0], ' '.join(tokens[1:])
+    return text
 
-            pg_num = int(match_components[-1])
-            entries[match_components[0]] = {
-                "page_number": pg_num,
-                "spec_number": spec_num,
-                "spec_title": spec_title
-            }
-    return entries
+def binary_to_pdf(bin, dir: str, name: str):
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+    with open(Path(dir) / name, "wb") as pdf_out:
+        pdf_out.write(bin)
 
-def load_pdf_to_chunks(pdf_path: str, chunk_size: int, verbose: bool = False) -> List[str]:
-    specs = get_spec_list(pdf_path) 
-    lens = [len(s) for s in specs]
-    idx = [i for i, l in enumerate(lens) if l > chunk_size]
+@st.cache_resource
+def init_chain(model_name: str, key: Optional[str] = None) -> RetrievalQA:
+    pdf_path = "test1.pdf"
+    text = load_pdf_to_text(pdf_path)
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=0,
@@ -146,9 +127,11 @@ def load_pdf_to_chunks(pdf_path: str, chunk_size: int, verbose: bool = False) ->
         specs += text_splitter.split_text(specs[i])
     return specs
 
-def binary_to_pdf(bin, dir: str):
-    with open(os.path.expanduser(dir), "wb") as pdf_out:
-        pdf_out.write(base64.b64decode(bin))
+def binary_to_pdf(bin, dir: str, name: str):
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+    with open(Path(dir) / name, "wb") as pdf_out:
+        pdf_out.write(bin)
 
 @st.cache_resource
 def init_chain(model_name: str, pdf_path: str, chunk_size: int = 1000, key: Optional[str] = None) -> RetrievalQA:

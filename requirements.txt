@@ -10,7 +10,6 @@ cachetools==5.3.1
 certifi==2023.7.22
 charset-normalizer==3.3.0
 click==8.1.7
-cohere==4.27
 dataclasses-json==0.6.1
 einops==0.7.0
 faiss-cpu==1.7.4
