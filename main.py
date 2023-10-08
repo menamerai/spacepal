@@ -13,9 +13,8 @@ from langchain.vectorstores import FAISS
 from langchain.llms import HuggingFacePipeline
 from langchain.llms.cohere import Cohere
 from langchain.chains import RetrievalQA
-from langchain.callbacks import get_openai_callback
 
-from typing import Optional, List, Any
+from typing import Optional, List, Dict, Tuple, Any
 
 import pickle
 import os
@@ -25,8 +24,6 @@ model_name = "teknium/Phi-Hermes-1.3B"
 # model_name = "teknium/Puffin-Phi-v2"
 device = 0 if torch.cuda.is_available() else -1
 
-# spec_toc_pattern = "[0-9]+\.[0-9\.]*\s?[a-z A-Z0-9\-\,\(\)\n\?]+\s?\.+\s?[0-9]+"
-# spec_toc_pattern = "[0-9]+\.[0-9\.]*\s?[a-z A-Z0-9\-\,\(\)\n\?]+\s?[\.\s]+\s?[0-9]+"
 spec_toc_pattern = "[0-9]+\.[0-9\.]*\s?[a-z A-Z0-9\-\,\(\)\n\?]+\s?[\.\s][\.\s]+\s?[0-9]+"
 
 def parse_args():
@@ -73,8 +70,54 @@ def get_toc_pages(pages: List) -> List[Any]:
 
     return toc_pages
 
-def get_toc_entries(pages: List) -> List[str]:
-    pass
+def get_spec_entry(pages: List, title: str, entries: Dict[str, Dict]) -> Tuple[int]:
+    entry = entries[title]
+    pg_num = entry['page_number'] - 1
+    spec_num, spec_title = entry['spec_number'], entry['spec_title']
+    for page in pages[pg_num:]:
+        content = page.extract_text()
+        content_lines = [line.strip() for line in content.split("\n") if line.strip() != ""]
+
+        state = 0
+        spec_content = ""
+        for line in content_lines:
+            match state:
+                case 0:
+                    if spec_num in line and spec_title in line:
+                        spec_content += (line + "\n")
+                        state = 1
+                case 1:
+                    found_titles = [t for t, v in entries.items() if v['spec_number'] in line and v['spec_title'] in line and t != title]
+                    if len(found_titles) == 0:
+                        spec_content += (line + "\n")                    
+                    else:
+                        break
+        if spec_content != "":
+            return spec_content
+    return None
+
+def get_toc_entries(pages: List) -> Tuple[Dict[str, Dict], Dict]:
+    pages = get_toc_pages(pages)
+    split_pattern = "\.\.+" # match 2 or more dots
+    entries = {}
+    first_entry = None
+    for page in pages:
+        text = page.extract_text()
+        matches = [x for x in re.findall(spec_toc_pattern, text)]
+        for match in matches:
+            match_components = re.split(split_pattern, match)
+            match_components[0] = match_components[0].replace("\n", "").strip()
+            if first_entry is None:
+                first_entry = match_components[0]
+            tokens = match_components[0].split() 
+            spec_num, spec_title = tokens[0], ' '.join(tokens[1:])
+            pg_num = int(match_components[-1])
+            entries[match_components[0]] = {
+                "page_number": pg_num,
+                "spec_number": spec_num,
+                "spec_title": spec_title
+            }
+    return entries, entries[first_entry]
 
 def load_pdf_to_text(pdf_path: str): 
     pdf_reader = PdfReader(pdf_path)
