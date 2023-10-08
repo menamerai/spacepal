@@ -25,7 +25,9 @@ model_name = "teknium/Phi-Hermes-1.3B"
 # model_name = "teknium/Puffin-Phi-v2"
 device = 0 if torch.cuda.is_available() else -1
 
-spec_toc_pattern = "[0-9]+\.[0-9\.]*\s?[a-z A-Z0-9\-\,\(\)\n\?]+\s?\.+\s?[0-9]+"
+# spec_toc_pattern = "[0-9]+\.[0-9\.]*\s?[a-z A-Z0-9\-\,\(\)\n\?]+\s?\.+\s?[0-9]+"
+# spec_toc_pattern = "[0-9]+\.[0-9\.]*\s?[a-z A-Z0-9\-\,\(\)\n\?]+\s?[\.\s]+\s?[0-9]+"
+spec_toc_pattern = "[0-9]+\.[0-9\.]*\s?[a-z A-Z0-9\-\,\(\)\n\?]+\s?[\.\s][\.\s]+\s?[0-9]+"
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -56,6 +58,19 @@ def get_toc_pages(pages: List) -> List[Any]:
                 else:
                     break
                 i += 1
+
+    max_pg_number = 0
+    for i, page in enumerate(toc_pages):
+        text = page.extract_text()
+        matches = [x for x in re.findall(spec_toc_pattern, text)]
+        pg_number_pattern = "[0-9]+$"
+        pg_number_strs = [re.findall(pg_number_pattern, match.strip()) for match in matches]
+        pg_numbers = [int(num[0]) for num in pg_number_strs if len(num) > 0] + [0]
+        if max(pg_numbers) < max_pg_number:
+            return toc_pages[:i] 
+        else:
+            max_pg_number = max(pg_numbers)
+
     return toc_pages
 
 def get_toc_entries(pages: List) -> List[str]:
@@ -65,12 +80,8 @@ def load_pdf_to_text(pdf_path: str):
     pdf_reader = PdfReader(pdf_path)
     text = ""
 
-    print("PARSING PDF")
     for page in pdf_reader.pages:
         text += page.extract_text()
-        print(page.extract_text())
-        print(page.extract_text().split("\n"))
-        input()
 
     return text
 
