@@ -5,7 +5,7 @@ from main import load_pdf_to_text, generate_response, init_chain
 # STAR
 """
 model_name = "cohere"
-key = ""
+key = "6TL2N5ysRGhfd1FiCykEZCXFfyYTZwv9um4LPshX"
 chain = init_chain(model_name, key)
 
 if "messages" not in st.session_state:
@@ -25,6 +25,7 @@ if not st.session_state["submitted"]:
         st.write('Please submit a pdf!')
         uploaded_pdfs = st.file_uploader('Upload a PDF', type=['pdf'])
         submit_button = st.button('Submit', type='primary')
+        print(type(uploaded_pdfs))
         if submit_button:
             st.session_state['submitted'] = True
             st.session_state['pdf'] = uploaded_pdfs
