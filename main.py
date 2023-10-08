@@ -217,7 +217,6 @@ def init_chain(model_name: str, pdf_path: str, key: Optional[str] = None) -> Tup
             vectorstore = pickle.load(f)
         #st.write("Already, Embeddings loaded from the your folder (disks)")
     else:
-        #embedding (Openai methods) 
         embeddings = HuggingFaceEmbeddings(model_name="all-mpnet-base-v2")
 
         #Store the chunks part in db (vector)
@@ -230,7 +229,7 @@ def init_chain(model_name: str, pdf_path: str, key: Optional[str] = None) -> Tup
     
     if model_name == "cohere":
         llm = Cohere(cohere_api_key=key)
-        prompt_template = "You are a superintelligent AI assistant that excels in handling technical documents. Use the following context to answer the question. Base your answers on the context given, do not make up information. If you don't know something, just say it.\nContext:\n{context}{question}\nAnswer: "
+        prompt_template = "You are a superintelligent AI assistant that excels in handling technical documents. Use the following context to answer the question, and cite specification numbers for context used. Base your answers on the context given, do not make up information. If you don't know something, just say it.\nContext:\n{context}{question}\nAnswer: "
     else:
         prompt_template = "### Instruction: You are an AI assistant NASA missions used specifically to proof-read their documentations. Use the following context to answer the question. Base your answers on the context given, do not make up information.\nContext:\n{context}\nQuestion: {question}\n### Response: \n"
         llm = HuggingFacePipeline.from_model_id(
@@ -257,7 +256,7 @@ def generate_response(question: str, model: Model, toc_entries: Dict[str, Dict] 
     if len(toc_entries) > 0:
         toc_labels = list(toc_entries.keys())
         results = model['classifier'](question, toc_labels)
-        score_idxs = np.argsort(results['scores'])[::-1][:10]
+        score_idxs = np.argsort(results['scores'])[::-1][:25]
 
         levels = [toc_entries[results['labels'][i]]['spec_number'].count('.') for i in score_idxs]
         level_idxs = np.argsort(levels)[::-1][:5]
