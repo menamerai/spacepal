@@ -5,10 +5,12 @@ import shutil
 import os
 from pathlib import Path
 from main import load_pdf_to_text, generate_response, init_chain, binary_to_pdf
+from dotenv import load_dotenv
 
 """
-# STAR
+# Space PAL
 """
+load_dotenv()
 model_name = "cohere"
 key = os.environ.get("COHERE_API_KEY")
 
@@ -62,7 +64,8 @@ try:
 
             # Add assistant response to chat history
             st.session_state.messages.append({"role": "assistant", "content": response})          
-except KeyboardInterrupt: 
+finally: 
+    st.stop()
     if st.session_state['temp_dir']:
         if os.path.exists("tmp"):
             shutil.rmtree("tmp")
