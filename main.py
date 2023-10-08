@@ -85,6 +85,11 @@ def load_pdf_to_text(pdf_path: str):
 
     return text
 
+def binary_to_pdf(bin, dir: str):
+    with open(os.path.expanduser(dir), "wb") as pdf_out:
+        pdf_out.write(base64.b64decode(bin))
+
+
 @st.cache_resource
 def init_chain(model_name: str, key: Optional[str] = None) -> RetrievalQA:
     pdf_path = "test1.pdf"
