@@ -1,11 +1,15 @@
+import os
 import streamlit as st
 from main import load_pdf_to_text, generate_response, init_chain
+from dotenv import load_dotenv
+
+load_dotenv()
 
 """
 # STAR
 """
 model_name = "cohere"
-key = "6TL2N5ysRGhfd1FiCykEZCXFfyYTZwv9um4LPshX"
+key = os.environ.get("COHERE_API_KEY")
 chain = init_chain(model_name, key)
 
 if "messages" not in st.session_state:
