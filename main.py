@@ -24,7 +24,6 @@ from typing import Optional, List, Dict, Tuple, Any, Union
 
 import pickle
 import os
-import base64
 
 Model = Dict[str, Union[Any,  RetrievalQA]]
 
@@ -46,6 +45,16 @@ def parse_args():
     return args
 
 def get_toc_pages(pages: List) -> List[Any]:
+    """
+    Extract table of content information, chiefly section title and corresponding page
+    Used in content classification of prompt to ground model
+    --------------------------------------------------------
+    pages: List
+
+    returns
+    --------------------------------------------------------
+    Table of content pages in a list
+    """
     state = 0 # 0 means we are looking for TOC start, 1 means we're parsing regex
     i = 0
     toc_pages = []
@@ -81,6 +90,19 @@ def get_toc_pages(pages: List) -> List[Any]:
     return toc_pages
 
 def get_spec_entry(pages: List, title: str, entries: Dict[str, Dict]) -> Tuple[int]:
+    """
+    For a specific specification document, get the text corresponding to that entry
+    --------------------------------------------------------
+    pages: list
+
+    title: str
+
+    entries: Dict[str, Dict]
+
+    returns
+    --------------------------------------------------------
+    An entry-specific text
+    """
     entry = entries[title]
     pg_num = entry['page_number'] - 1
     spec_num, spec_title = entry['spec_number'], entry['spec_title']
@@ -107,6 +129,17 @@ def get_spec_entry(pages: List, title: str, entries: Dict[str, Dict]) -> Tuple[i
     return None
 
 def get_subspec_entries(title: str, entries: Dict[str, Dict]) -> Dict[str, Dict]:
+    """
+    For a sub-specific specification document, get the text corresponding to that entry
+    --------------------------------------------------------
+    title: str
+
+    entries: Dict[str, Dict]
+
+    returns
+    --------------------------------------------------------
+    An entry-specific text
+    """
     spec = entries[title]['spec']
     if spec is None:
         return {}
@@ -134,6 +167,17 @@ def get_subspec_entries(title: str, entries: Dict[str, Dict]) -> Dict[str, Dict]
     return subspec_entries
 
 def get_spec_list(pdf_path: str, verbose: bool = False) -> Tuple[List[str], Dict[str, Dict]]:
+    """
+    Get the list of the specifcations from the document based on the table of content
+    --------------------------------------------------------
+    pdf_path: str
+
+    verbose: bool = False
+
+    returns
+    --------------------------------------------------------
+    A tuple of list of specifcations and dictionary of entries
+    """
     pdf_reader = PdfReader(pdf_path)
     entries = get_toc_entries(pdf_reader.pages)
 
@@ -179,6 +223,14 @@ def get_spec_list(pdf_path: str, verbose: bool = False) -> Tuple[List[str], Dict
     return page_one_chunks + specs, entries
 
 def get_toc_entries(pages: List) -> Dict[str, Dict]:
+    """
+    Get all the entries in table of content
+    --------------------------------------------------------
+    pages: list
+
+    --------------------------------------------------------
+    A dictionary of all the entries
+    """
     pages = get_toc_pages(pages)
     split_pattern = "\.\.+" # match 2 or more dots
     entries = {}
@@ -203,6 +255,19 @@ def get_toc_entries(pages: List) -> Dict[str, Dict]:
     return entries
 
 def load_pdf_to_chunks(pdf_path: str, chunk_size: Optional[int] = None, verbose: bool = False) -> List[str]:
+    """
+    Load the pdf into chunks to be processed by the tokenizer
+    --------------------------------------------------------
+    pdf_path: str
+
+    chunk_size
+
+    verbose: bool
+
+    returns
+    --------------------------------------------------------
+    A list of text chunks
+    """
     specs, toc_entries = get_spec_list(pdf_path, verbose=verbose) 
     if chunk_size is not None:
         lens = [len(s) for s in specs]
@@ -217,6 +282,15 @@ def load_pdf_to_chunks(pdf_path: str, chunk_size: Optional[int] = None, verbose:
     return specs, toc_entries
 
 def binary_to_pdf(bin, dir: str, name: str):
+    """
+    Write the binary inputted into PDF file on folder
+    --------------------------------------------------------
+    bin
+
+    dir: str
+
+    name: str
+    """
     if not os.path.exists(dir):
         os.makedirs(dir)
     with open(Path(dir) / name, "wb") as pdf_out:
@@ -224,6 +298,19 @@ def binary_to_pdf(bin, dir: str, name: str):
 
 @st.cache_resource
 def init_chain(model_name: str, pdf_path: str, key: Optional[str] = None) -> Tuple[Model, Dict[str, Dict]]:
+    """
+    Initialize langchain and huggingface backend given model name/api key
+    --------------------------------------------------------
+    model_name: str
+
+    pdf_path: str
+
+    key: Optional[str] = None
+
+    returns
+    --------------------------------------------------------
+    A tuple of the model and ToC dict
+    """
     chunks, toc_entries = load_pdf_to_chunks(pdf_path, verbose=True)
     store_name = pdf_path[:-4]
         
@@ -266,6 +353,15 @@ def init_chain(model_name: str, pdf_path: str, key: Optional[str] = None) -> Tup
     return {"chain": chain, "classifier": classifier}, toc_entries
 
 def generate_response(question: str, model: Model, toc_entries: Dict[str, Dict] = {}):
+    """
+    Given pre-trained model object, generate response from model
+    --------------------------------------------------------
+    question: str
+
+    model: Model
+
+    toc_entires: Dict[str, Dict]
+    """
     context = ""
     # if we're using ToC to augment, hack extra sources into RAG through the question string
     if len(toc_entries) > 0:

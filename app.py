@@ -4,13 +4,13 @@ import tempfile
 import shutil
 import os
 import time
-import signal
 from pathlib import Path
 from main import generate_response, init_chain, binary_to_pdf
 from dotenv import load_dotenv
 
 st.header('SPACE PAL :rocket:', divider='rainbow')
 
+# Load the API Key
 load_dotenv()
 model_name = "cohere"
 key = os.environ.get("COHERE_API_KEY")
@@ -46,13 +46,15 @@ try:
             submit_button = st.button('Submit', type='primary')
 
             if submit_button:
+                # Write PDF to temporary file
                 time.sleep(1)
                 st.session_state['submitted'] = True
                 st.session_state['pdf'] = uploaded_pdfs
                 temp_path = "." + str(Path(st.session_state["temp_dir"].name))
                 pdf_name = st.session_state['pdf'].name
                 pdf_path = Path(temp_path) / pdf_name
-                binary_to_pdf(st.session_state['pdf'].read(), str(temp_path), pdf_name) 
+                binary_to_pdf(st.session_state['pdf'].read(), str(temp_path), pdf_name)
+                # Initialize chain for prompt processing 
                 st.session_state.model, st.session_state.toc_entries = init_chain(model_name, str(pdf_path), key=key)
 
 
@@ -71,6 +73,7 @@ try:
             # Add assistant response to chat history
             st.session_state.messages.append({"role": "assistant", "content": response})          
 
+# Delete all the temporary files after usage
 finally: 
     if st.session_state['pdf']:
         if os.path.exists("./tmp"):
