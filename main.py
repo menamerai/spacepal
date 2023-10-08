@@ -191,8 +191,10 @@ def get_toc_entries(pages: List) -> Dict[str, Dict]:
             match_components[-1] = match_components[-1].split()[0].replace(".", "").strip()
             tokens = match_components[0].split() 
             spec_num, spec_title = tokens[0], ' '.join(tokens[1:])
-
-            pg_num = int(match_components[-1])
+            try:
+                pg_num = int(match_components[-1])
+            except Exception as e:
+                continue
             entries[match_components[0]] = {
                 "page_number": pg_num,
                 "spec_number": spec_num,
@@ -242,7 +244,7 @@ def init_chain(model_name: str, pdf_path: str, key: Optional[str] = None) -> Tup
     
     if model_name == "cohere":
         llm = Cohere(cohere_api_key=key)
-        prompt_template = "You are a superintelligent AI assistant that excels in handling technical documents. Use the following context to answer the question, and cite specification numbers for context used. Do not make up information, use the document for all of your thinking. If you don't know something, just say it.\nContext:\n{context}{question}\nAnswer: "
+        prompt_template = "You are a superintelligent AI assistant that excels in handling technical documents. Use the following context to answer the question, and cite specification numbers for context used. Do not make up information, use the document for all of your thinking. The document is grammatically correct. Take a deep breath, be as specific as possible, failure is not an option. If you don't know something, just say it.\nSpecification Context:\n{context}{question}. Be as specific as possible and cite all used sources.\nAnswer:"
     else:
         prompt_template = "### Instruction: You are an AI assistant NASA missions used specifically to proof-read their documentations. Use the following context to answer the question. Base your answers on the context given, do not make up information.\nContext:\n{context}\nQuestion: {question}\n### Response: \n"
         llm = HuggingFacePipeline.from_model_id(
@@ -272,7 +274,7 @@ def generate_response(question: str, model: Model, toc_entries: Dict[str, Dict] 
         score_idxs = np.argsort(results['scores'])[::-1][:25]
 
         levels = [toc_entries[results['labels'][i]]['spec_number'].count('.') for i in score_idxs]
-        level_idxs = np.argsort(levels)[::-1][:5]
+        level_idxs = np.argsort(levels)[::-1][:3]
 
         for i in level_idxs:
             label = results['labels'][score_idxs[i]]
